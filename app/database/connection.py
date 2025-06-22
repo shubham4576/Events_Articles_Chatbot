@@ -1,8 +1,10 @@
 import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models.database_models import Base
+
 from app.config import settings
+from app.models.database_models import Base
 
 
 def get_database_url() -> str:
@@ -11,7 +13,7 @@ def get_database_url() -> str:
     db_dir = os.path.dirname(settings.sqlite_db_path)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
-    
+
     return f"sqlite:///{settings.sqlite_db_path}"
 
 
@@ -21,7 +23,7 @@ def create_database_engine():
     engine = create_engine(
         database_url,
         connect_args={"check_same_thread": False},  # Needed for SQLite
-        echo=settings.debug  # Log SQL queries in debug mode
+        echo=settings.debug,  # Log SQL queries in debug mode
     )
     return engine
 
@@ -37,7 +39,7 @@ def get_database():
     """Get a database session."""
     engine = create_database_engine()
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
+
     db = SessionLocal()
     try:
         yield db
