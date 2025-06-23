@@ -1,10 +1,14 @@
 import logging
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm.session import Session
 
 from app.database import DatabaseOperations, get_database
-from app.models.schemas import APIRequestSchema, APIResponseSchema
+from app.models.schemas import (
+    APIRequestSchema, APIResponseSchema, ChatMessageSchema,
+    ChatResponseSchema, SessionHistorySchema, SystemStatusSchema
+)
 from app.services import APIClient, VectorStoreService
 
 logger = logging.getLogger(__name__)
@@ -133,3 +137,146 @@ async def fetch_and_update_data(
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "message": "Events Articles Chatbot API is running"}
+
+
+# Initialize chatbot instance (lazy loading)
+_chatbot_instance = None
+
+def get_chatbot():
+    """Get or create chatbot instance."""
+    global _chatbot_instance
+    if _chatbot_instance is None:
+        try:
+            from agents import EventsArticlesChatbot
+            _chatbot_instance = EventsArticlesChatbot()
+        except Exception as e:
+            logger.error(f"Failed to initialize chatbot: {e}")
+            raise HTTPException(status_code=500, detail=f"Chatbot initialization failed: {str(e)}")
+    return _chatbot_instance
+
+
+@router.post("/chat", response_model=ChatResponseSchema)
+async def chat_with_bot(request: ChatMessageSchema):
+    """
+    Chat with the Events Articles Chatbot using session-based memory.
+
+    This endpoint processes user messages through the agent supervisor system,
+    which coordinates between SQL and RAG agents with persistent session memory.
+
+    Args:
+        request: Chat message request containing user message and session_id
+
+    Returns:
+        ChatResponseSchema with bot response and metadata
+    """
+    try:
+        logger.info(f"Processing chat request for session {request.session_id}: {request.message}")
+
+        chatbot = get_chatbot()
+
+        # Process the chat message with session-based memory
+        response = chatbot.chat(
+            message=request.message,
+            session_id=request.session_id
+        )
+
+        return ChatResponseSchema(**response)
+
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process chat message: {str(e)}"
+        )
+
+
+@router.get("/chat/history/{session_id}", response_model=List[SessionHistorySchema])
+async def get_session_history(
+    session_id: str,
+    limit: int = Query(10, description="Maximum number of messages to retrieve")
+):
+    """
+    Get session history using LangGraph's persistent memory.
+
+    Args:
+        session_id: Session identifier
+        limit: Maximum number of messages to retrieve
+
+    Returns:
+        List of session messages
+    """
+    try:
+        logger.info(f"Getting session history for {session_id}")
+
+        chatbot = get_chatbot()
+
+        # Get session history from LangGraph memory
+        history = chatbot.get_session_history(session_id, limit)
+
+        return [SessionHistorySchema(**msg) for msg in history]
+
+    except Exception as e:
+        logger.error(f"Error getting session history: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get session history: {str(e)}"
+        )
+
+
+@router.delete("/chat/memory/{session_id}")
+async def clear_session_memory(session_id: str):
+    """
+    Clear session memory using LangGraph's persistent memory system.
+
+    Args:
+        session_id: Session identifier to clear
+
+    Returns:
+        Success message
+    """
+    try:
+        logger.info(f"Clearing session memory for {session_id}")
+
+        chatbot = get_chatbot()
+
+        # Clear session memory
+        success = chatbot.clear_session_memory(session_id)
+
+        if success:
+            return {"success": True, "message": f"Session memory cleared for {session_id}"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to clear session memory")
+
+    except Exception as e:
+        logger.error(f"Error clearing session memory: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to clear session memory: {str(e)}"
+        )
+
+
+@router.get("/chat/status", response_model=SystemStatusSchema)
+async def get_chatbot_status():
+    """
+    Get chatbot system status and health information.
+
+    Returns:
+        SystemStatusSchema with system status and component health
+    """
+    try:
+        logger.info("Getting chatbot system status")
+
+        chatbot = get_chatbot()
+
+        # Get system status
+        status = chatbot.get_system_status()
+
+        return SystemStatusSchema(**status)
+
+    except Exception as e:
+        logger.error(f"Error getting chatbot status: {e}")
+        return SystemStatusSchema(
+            chatbot_status="error",
+            timestamp="",
+            error=str(e)
+        )

@@ -9,3 +9,8 @@ python-dotenv
 aiosqlite
 httpx
 pydantic-settings
+
+langchain-community
+langchain
+langchain[google-genai]
+langgraph

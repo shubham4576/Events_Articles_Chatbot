@@ -101,3 +101,35 @@ class APIResponseSchema(BaseModel):
     articles_processed: int = 0
     embeddings_created: int = 0
     data: Optional[Dict[str, Any]] = None
+
+
+# Chatbot Schemas with Session-based Memory
+class ChatMessageSchema(BaseModel):
+    message: str = Field(..., description="User's message/question")
+    session_id: str = Field(..., description="Session ID for conversation tracking and memory")
+
+
+class ChatResponseSchema(BaseModel):
+    response: str = Field(..., description="Chatbot's response")
+    success: bool = Field(..., description="Whether the request was successful")
+    session_id: str = Field(..., description="Session ID")
+    timestamp: str = Field(..., description="Response timestamp")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata including session info")
+    error: Optional[str] = Field(None, description="Error message if any")
+
+
+class SessionHistorySchema(BaseModel):
+    role: str = Field(..., description="Message role (user/assistant)")
+    content: str = Field(..., description="Message content")
+    timestamp: str = Field(..., description="Message timestamp")
+    agent: Optional[str] = Field(None, description="Agent that generated the message")
+    session_id: str = Field(..., description="Session ID")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+
+
+class SystemStatusSchema(BaseModel):
+    chatbot_status: str = Field(..., description="Overall chatbot status")
+    timestamp: str = Field(..., description="Status check timestamp")
+    components: Dict[str, Any] = Field(default_factory=dict, description="Component status")
+    statistics: Optional[Dict[str, Any]] = Field(None, description="System statistics")
+    error: Optional[str] = Field(None, description="Error message if any")

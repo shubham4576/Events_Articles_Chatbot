@@ -99,6 +99,7 @@ class VectorStoreService:
         ]
 
         for field in embedding_fields:
+            logger.info(f"VALUE:: {article.get(field)}")
             value = article.get(field)
             if value and isinstance(value, str) and value.strip():
                 text_parts.append(value.strip())
