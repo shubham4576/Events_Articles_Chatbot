@@ -4,14 +4,16 @@ from typing import Optional
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
-
 load_dotenv()
 
 
 class Settings(BaseSettings):
     # API Configuration
     api_url: str = "https://theedgeroom.com/wp-json/custom/v1/search-data"
-    api_auth_header: str = "Basic YWRtaW46bUdWcSBFeG9UIGZJdWsgRGF3ayB0VW5hwqBvWGg4"
+    api_auth_header: str = "Basic YWRtaW46bUdWcSBFeG9UIGZJdWsgRGF3ayB0VW5hIG9YaDg="
+    # API Configuration - Option 2: Separate credentials
+    api_username: Optional[str] = "admin"
+    api_password: Optional[str] = "mGVq ExoT fIuk Dawk tUna oXh8"
 
     # Database Configuration
     sqlite_db_path: str = "data/events_articles.db"

@@ -1,7 +1,8 @@
+import base64
 import logging
 from typing import Any, Dict, List
 
-import httpx
+import requests
 
 from app.config import settings
 from app.models.schemas import APIRequestSchema
@@ -14,15 +15,28 @@ class APIClient:
 
     def __init__(self):
         self.base_url = settings.api_url
-        self.headers = {
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Dynamically generate headers including Basic Auth each time."""
+        if settings.api_username and settings.api_password:
+            credentials = f"{settings.api_username}:{settings.api_password}"
+            print(credentials)
+            encoded_credentials = base64.b64encode(credentials.encode("utf-8")).decode(
+                "utf-8"
+            )
+            auth_header = f"Basic {encoded_credentials}"
+            print("AUTH HEADER: ", auth_header)
+        else:
+            auth_header = settings.api_auth_header
+
+        return {
             "Content-Type": "application/json",
-            "Authorization": settings.api_auth_header,
-            "Cookie": "PHPSESSID=1158a7ca22393d489c8828eb2f9a580f; __cf_bm=P_5fUwzg8oS.ApSniDHDDd74soIp1yA1Z0irVZ6MkaI-1748187878-1.0.1.1-kqbe8ty54ZZlm8igFyZB3XXDZDoZmg3PAW4Orqf1NAB6hxeN4pWYh6MEcYxtxPxg1g_zFvtofbuvZsgEbb5dkmZup8nXZce5x_8rGtphg8Y; __cf_bm=aAPOi2xPypaWZRRADxaZSzr4BkfFJD1IiB5Ic1Jg6X4-1750589197-1.0.1.1-aUndY7nbktzZgjc.RmIa61xY86or6ncXd4NrNHf0X7Uta.rq5tHsW0Fg2qjbpT9dmR0UlBkpBQHa.iuKChVG07Suz7Di0g2TEEt3RX6iVFQ; __cf_bm=ezwyP29WUwBin8Y.PHtuEtKQr.Se1vQIw_tPSx0eToM-1750612897-1.0.1.1-6GzWT1bZElFn0w60kK3ZW_i00oo5bjsVH5DzqG9UkBZJpOLQnZR7lHcq4jaqJpjAhIANCfxzOizUV90vKlVH5xfcb2uImIiIACOG6itclRQ",
+            "Authorization": auth_header,
         }
 
-    async def fetch_data(self, request_data: APIRequestSchema) -> Dict[str, Any]:
+    def fetch_data(self, request_data: APIRequestSchema) -> Dict[str, Any]:
         """
-        Fetch data from the external API.
+        Fetch data from the external API using synchronous `requests` library.
 
         Args:
             request_data: API request parameters
@@ -31,31 +45,22 @@ class APIClient:
             Dictionary containing the API response
 
         Raises:
-            httpx.HTTPError: If the API request fails
+            requests.HTTPError: If the API request fails
         """
-        payload = {
-            "start_date": request_data.start_date,
-            "end_date": request_data.end_date,
-            "type": request_data.type,
-        }
+        url = self.base_url
+        headers = self._get_headers()
+
+        payload = request_data.model_dump()
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                logger.info(f"Fetching data from API with payload: {payload}")
+            logger.info(f"Sending POST to {url} with payload: {payload}")
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
 
-                response = await client.post(
-                    self.base_url, json=payload, headers=self.headers
-                )
+            logger.info(f"API returned status {response.status_code}")
+            return response.json()
 
-                response.raise_for_status()
-                data = response.json()
-
-                logger.info(
-                    f"Successfully fetched data from API. Response status: {response.status_code}"
-                )
-                return data
-
-        except httpx.HTTPError as e:
+        except requests.HTTPError as e:
             logger.error(f"HTTP error occurred while fetching data: {e}")
             raise
         except Exception as e:
