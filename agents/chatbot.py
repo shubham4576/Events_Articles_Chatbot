@@ -5,8 +5,17 @@ Main chatbot interface that uses the agent supervisor.
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 
-from .supervisor import AgentSupervisor
+try:
+    from .supervisor import AgentSupervisor
+except ImportError:
+    # Absolute import for direct execution
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(project_root))
+    from agents.supervisor import AgentSupervisor
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +114,7 @@ class EventsArticlesChatbot:
             # Format history for API response
             formatted_history = []
             for msg in history:
+                # Keep original roles from session memory (not LangGraph converted ones)
                 formatted_msg = {
                     "role": msg.get("role", "unknown"),
                     "content": msg.get("content", ""),
@@ -223,7 +233,12 @@ class EventsArticlesChatbot:
         # Check messages for agent information
         messages = result.get("messages", [])
         for message in messages:
-            agent = message.get("agent")
+            agent = None
+            if isinstance(message, dict):
+                agent = message.get("agent")
+            elif hasattr(message, "agent"):
+                agent = getattr(message, "agent", None)
+            # else: could be HumanMessage without agent attribute
             if agent and agent not in agents_used:
                 agents_used.append(agent)
         

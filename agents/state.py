@@ -129,9 +129,33 @@ def get_session_context(state: AgentState, max_messages: int = 5) -> str:
     context_parts.append(f"Previous messages in this session:")
 
     for msg in recent_messages:
-        role = msg.get("role", "unknown")
-        content = msg.get("content", "")[:100]  # Truncate long messages
-        agent = msg.get("agent", "")
+        # Handle both dict and LangChain message objects
+        if hasattr(msg, '__class__') and hasattr(msg, 'content'):
+            # LangChain message object
+            from langchain.schema import HumanMessage, AIMessage, SystemMessage
+
+            if isinstance(msg, HumanMessage):
+                role = "user"
+            elif isinstance(msg, AIMessage):
+                role = "assistant"
+            elif isinstance(msg, SystemMessage):
+                role = "system"
+            else:
+                role = "unknown"
+
+            content = msg.content
+            agent = getattr(msg, 'agent', '') if hasattr(msg, 'agent') else ''
+        else:
+            # Dictionary message
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            agent = msg.get("agent", "")
+
+        # Convert system messages with supervisor agent to supervisor role for display
+        if role == "system" and agent == "supervisor":
+            role = "supervisor"
+
+        content = content[:100] if content else ""  # Truncate long messages
         agent_info = f" ({agent})" if agent else ""
         context_parts.append(f"  {role}{agent_info}: {content}...")
 

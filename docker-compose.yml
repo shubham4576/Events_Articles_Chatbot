@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  events-chatbot:
+    build: .
+    container_name: events-articles-chatbot
+    ports:
+      - "8000:8000"
+    environment:
+      # Google Gemini API Key - replace with your actual key or use .env file
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-AIzaSyASQKB2rtWNb6yAGD1MMzV0muM359_cHwc}
+      # Database Configuration
+      - SQLITE_DB_PATH=data/events_articles.db
+      - CHROMADB_PATH=data/chromadb
+      # Application Configuration
+      - DEBUG=false
+    volumes:
+      # Mount data directory for persistence
+      - ./data:/app/data
+      # Optional: Mount logs directory if you add logging to files
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Optional: Add a volume for data persistence
+volumes:
+  chatbot_data:
+    driver: local

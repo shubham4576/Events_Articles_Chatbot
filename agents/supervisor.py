@@ -8,15 +8,32 @@ from typing import Dict, Any, List, Literal
 from pathlib import Path
 
 from langchain.chat_models import init_chat_model
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import HumanMessage, SystemMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from .state import AgentState, create_initial_state, update_session_metadata, get_session_context
-from .config import DEFAULT_SUPERVISOR_CONFIG
-from .memory import SessionMemory
-from sql_agent.agent import SQLAgent
-from rag_agent.agent import RAGAgent
+try:
+    # Relative imports (when used as package)
+    from .state import AgentState, create_initial_state, update_session_metadata, get_session_context
+    from .config import DEFAULT_SUPERVISOR_CONFIG
+    from .memory import SessionMemory
+except ImportError:
+    # Absolute imports (when run directly for testing)
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(project_root))
+
+    from agents.state import AgentState, create_initial_state, update_session_metadata, get_session_context
+    from agents.config import DEFAULT_SUPERVISOR_CONFIG
+    from agents.memory import SessionMemory
+try:
+    from sql_agent.agent import SQLAgent
+    from rag_agent.agent import RAGAgent
+except ImportError:
+    # Handle case where agents might not be importable
+    SQLAgent = None
+    RAGAgent = None
 
 logger = logging.getLogger(__name__)
 
@@ -171,22 +188,22 @@ class AgentSupervisor:
             # Update session metadata
             state = update_session_metadata(state, "supervisor")
 
-            # Add supervisor message with session context
-            supervisor_message = {
-                "role": "supervisor",
-                "content": f"Analyzing query and routing to: {routing_decision}",
-                "agent": "supervisor",
-                "session_id": session_id,
-                "timestamp": state["session_metadata"]["last_activity"]
-            }
+            # Add supervisor message with session context (using SystemMessage for LangGraph compatibility)
+            supervisor_content = f"Analyzing query and routing to: {routing_decision}"
+            supervisor_message = SystemMessage(content=supervisor_content)
+            # Add custom attributes for our tracking
+            supervisor_message.agent = "supervisor"
+            supervisor_message.session_id = session_id
+            supervisor_message.timestamp = state["session_metadata"]["last_activity"]
+
             state["messages"].append(supervisor_message)
 
-            # Store in session memory
+            # Store in session memory (keep original role for our tracking)
             if self.session_memory:
                 self.session_memory.add_message(
                     session_id=session_id,
                     role="supervisor",
-                    content=f"Analyzing query and routing to: {routing_decision}",
+                    content=supervisor_content,
                     agent="supervisor"
                 )
 
@@ -226,14 +243,14 @@ class AgentSupervisor:
             state = update_session_metadata(state, "sql")
 
             # Add SQL agent message with session context
-            sql_message = {
-                "role": "assistant",
-                "content": sql_result.get("response", "No response from SQL agent"),
-                "agent": "sql",
-                "session_id": session_id,
-                "success": sql_result.get("success", False),
-                "timestamp": state["session_metadata"]["last_activity"]
-            }
+            sql_content = sql_result.get("response", "No response from SQL agent")
+            sql_message = AIMessage(content=sql_content)
+            # Add custom attributes for our tracking
+            sql_message.agent = "sql"
+            sql_message.session_id = session_id
+            sql_message.success = sql_result.get("success", False)
+            sql_message.timestamp = state["session_metadata"]["last_activity"]
+
             state["messages"].append(sql_message)
 
             # Store in session memory
@@ -241,7 +258,7 @@ class AgentSupervisor:
                 self.session_memory.add_message(
                     session_id=session_id,
                     role="assistant",
-                    content=sql_result.get("response", "No response from SQL agent"),
+                    content=sql_content,
                     agent="sql",
                     metadata={"success": sql_result.get("success", False)}
                 )
@@ -285,14 +302,14 @@ class AgentSupervisor:
             state = update_session_metadata(state, "rag")
 
             # Add RAG agent message with session context
-            rag_message = {
-                "role": "assistant",
-                "content": rag_result.get("response", "No response from RAG agent"),
-                "agent": "rag",
-                "session_id": session_id,
-                "success": rag_result.get("success", False),
-                "timestamp": state["session_metadata"]["last_activity"]
-            }
+            rag_content = rag_result.get("response", "No response from RAG agent")
+            rag_message = AIMessage(content=rag_content)
+            # Add custom attributes for our tracking
+            rag_message.agent = "rag"
+            rag_message.session_id = session_id
+            rag_message.success = rag_result.get("success", False)
+            rag_message.timestamp = state["session_metadata"]["last_activity"]
+
             state["messages"].append(rag_message)
 
             # Store in session memory
@@ -300,7 +317,7 @@ class AgentSupervisor:
                 self.session_memory.add_message(
                     session_id=session_id,
                     role="assistant",
-                    content=rag_result.get("response", "No response from RAG agent"),
+                    content=rag_content,
                     agent="rag",
                     metadata={"success": rag_result.get("success", False)}
                 )
@@ -341,11 +358,22 @@ class AgentSupervisor:
             state["current_agent"] = "combiner"
             
             # Add combiner message
-            state["messages"].append({
-                "role": "assistant",
-                "content": combined_response,
-                "agent": "combiner"
-            })
+            combiner_message = AIMessage(content=combined_response)
+            # Add custom attributes for our tracking
+            combiner_message.agent = "combiner"
+            combiner_message.session_id = state.get("session_id")
+            combiner_message.timestamp = state["session_metadata"]["last_activity"]
+
+            state["messages"].append(combiner_message)
+
+            # Store in session memory
+            if self.session_memory:
+                self.session_memory.add_message(
+                    session_id=state.get("session_id"),
+                    role="assistant",
+                    content=combined_response,
+                    agent="combiner"
+                )
             
             return state
             
@@ -522,11 +550,39 @@ Please provide a comprehensive response that combines these information sources.
             # Create initial state with session context
             initial_state = create_initial_state(user_query, session_id)
 
-            # Load previous session messages into state
+            # Load previous session messages into state and convert to LangChain message objects
             if self.session_memory:
                 previous_messages = self.session_memory.get_session_messages(session_id, limit=10)
-                # Add previous messages to state (excluding the current user message we just added)
-                initial_state["messages"] = previous_messages[:-1] if previous_messages else []
+                # Convert to LangChain message objects
+                langgraph_messages = []
+                for msg in previous_messages[:-1] if previous_messages else []:  # Exclude current user message
+                    content = msg.get("content", "")
+                    agent = msg.get("agent", "")
+
+                    if msg.get("role") == "supervisor":
+                        message_obj = SystemMessage(content=content)
+                        message_obj.agent = agent
+                    elif msg.get("role") == "user":
+                        message_obj = HumanMessage(content=content)
+                    elif msg.get("role") == "assistant":
+                        message_obj = AIMessage(content=content)
+                        message_obj.agent = agent
+                    else:
+                        continue  # Skip unknown message types
+
+                    # Add session metadata
+                    message_obj.session_id = session_id
+                    message_obj.timestamp = msg.get("timestamp", "")
+
+                    langgraph_messages.append(message_obj)
+
+                initial_state["messages"] = langgraph_messages
+
+            # Add current user message to state as HumanMessage
+            user_message = HumanMessage(content=user_query)
+            user_message.session_id = session_id
+            user_message.timestamp = initial_state["session_metadata"]["last_activity"]
+            initial_state["messages"].append(user_message)
 
             # Run the graph with session-based memory
             config = {"configurable": {"thread_id": session_id}}
@@ -538,7 +594,11 @@ Please provide a comprehensive response that combines these information sources.
                 # Get the last assistant message
                 messages = final_state.get("messages", [])
                 for message in reversed(messages):
-                    if message.get("role") == "assistant":
+                    # Handle LangChain message objects
+                    if isinstance(message, AIMessage):
+                        final_response = message.content
+                        break
+                    elif isinstance(message, dict) and message.get("role") == "assistant":
                         final_response = message.get("content")
                         break
 

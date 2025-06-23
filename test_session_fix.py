@@ -45,27 +45,34 @@ def test_session_memory():
 def test_chatbot():
     """Test the chatbot with session memory."""
     print("\nTesting chatbot with session memory...")
-    
+
     try:
         from agents import EventsArticlesChatbot
-        
+
         chatbot = EventsArticlesChatbot()
-        
-        # Test a simple query
-        response = chatbot.chat("Hello", session_id="test_session_123")
-        
+
+        # Test a simple query that should work
+        response = chatbot.chat("Hello, can you help me?", session_id="test_session_123")
+
         print(f"Response success: {response.get('success')}")
-        print(f"Response: {response.get('response', 'No response')[:100]}...")
-        
+        print(f"Response: {response.get('response', 'No response')[:200]}...")
+
         if response.get('success'):
             print("✅ Chatbot test passed")
+
+            # Test session history
+            history = chatbot.get_session_history("test_session_123")
+            print(f"Session history: {len(history)} messages")
+
             return True
         else:
             print(f"❌ Chatbot test failed: {response.get('error', 'Unknown error')}")
             return False
-        
+
     except Exception as e:
         print(f"❌ Chatbot test failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
