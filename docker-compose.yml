@@ -1,0 +1,20 @@
+version: '3.9'  # Still the latest stable version as of now
+
+services:
+  app:
+    container_name: events_articles_chatbot_app
+    build:
+      context: .
+      dockerfile: Dockerfile  # Optional, only if your Dockerfile isn't named "Dockerfile"
+    ports:
+      - "8000:8000"
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+    restart: unless-stopped
+    environment:  # Optional: Add environment variables here or use env_file
+      - ENV=production
+    # env_file: .env  # Uncomment if using a .env file
+    # depends_on:
+    #   - db  # Uncomment and adjust if you add more services
