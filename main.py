@@ -1,67 +1,40 @@
-import logging
-import uvicorn
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+from datetime import date
+from app.fetcher import fetch_and_save_data
+from pathlib import Path
+from app.router_workflow import workflow
 
-from app.config import settings
-from app.api import router
-from app.database import init_database
+BASE_PATH = Path(__file__).resolve().parent
+print(BASE_PATH)
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+app = FastAPI()
 
-logger = logging.getLogger(__name__)
+class FetchRequest(BaseModel):
+    start_date: date
+    end_date: Optional[date] = date.today()
 
-# Create FastAPI application
-app = FastAPI(
-    title=settings.app_title,
-    version=settings.app_version,
-    description="API for Events Articles Chatbot with data fetching, SQLite storage, and ChromaDB embeddings",
-    debug=settings.debug
-)
+class RagQARequest(BaseModel):
+    user_query: str
+    session_id: str
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.post("/fetch-data")
+async def fetch_data(payload: FetchRequest):
+    result = await fetch_and_save_data(
+        start_date=str(payload.start_date),
+        end_date=str(payload.end_date),
+        json_file_path=str(BASE_PATH / "data" / "data.json")
+    )
+    return result
 
-# Include API routes
-app.include_router(router, prefix="/api/v1", tags=["data"])
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database on startup."""
-    logger.info("Starting up Events Articles Chatbot API...")
-    try:
-        init_database()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
-
-
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {
-        "message": "Welcome to Events Articles Chatbot API",
-        "version": settings.app_version,
-        "docs": "/docs"
-    }
-
+@app.post("/rag-qa")
+def rag_qa(payload: RagQARequest):
+    config = {"configurable": {"thread_id": payload.session_id}}
+    inputs = {"user_query": payload.user_query}
+    result = workflow.invoke(inputs, config=config)
+    return {"answer": result["final_answer"]}
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.debug
-    )
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
