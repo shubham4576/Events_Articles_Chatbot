@@ -1,7 +1,12 @@
+from datetime import date
 import httpx
 import json
+from pathlib import Path
 
-async def fetch_and_save_data(start_date, end_date, data_type="all", json_file_path="data.json"):
+
+async def fetch_and_save_data():
+    data_type="all"
+    json_file_path="data/data.json"
     url = "https://theedgeroom.com/wp-json/custom/v1/search-data"
 
     headers = {
@@ -11,7 +16,8 @@ async def fetch_and_save_data(start_date, end_date, data_type="all", json_file_p
         'Accept': 'application/json',
         'X-Requested-With': 'XMLHttpRequest'
     }
-
+    start_date = "1900-01-01"
+    end_date = str(date.today())
     payload = {
         "start_date": start_date,
         "end_date": end_date,

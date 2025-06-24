@@ -15,6 +15,5 @@ services:
     restart: unless-stopped
     environment:  # Optional: Add environment variables here or use env_file
       - ENV=production
-    # env_file: .env  # Uncomment if using a .env file
-    # depends_on:
-    #   - db  # Uncomment and adjust if you add more services
+    env_file: .env  # Uncomment if using a .env file
+  
