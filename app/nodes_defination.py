@@ -30,7 +30,7 @@ def clean_keywords(raw_keywords):
     ["[\"event\"", "legalweek", "west", "2017]"]
     and returns a list like: ["event", "legalweek", "west", "2017"]
     """
-    # Join and try to parse as JSON if it’s a stringified list
+    # Join and try to parse as JSON if it's a stringified list
     joined = ' '.join(raw_keywords)
     try:
         # Find the embedded JSON array string
@@ -84,9 +84,15 @@ def get_keywords(state: STATE):
 
 def full_text_search(state: STATE):
     keywords = state.keywords
-    json_list = json.load(open(json_file_path, "r"))
-
-
+    print(f"Searching for keywords: {keywords}")
+    
+    try:
+        json_list = json.load(open(json_file_path, "r"))
+        print(f"Loaded {len(json_list)} items from data file")
+    except Exception as e:
+        print(f"Error loading data file: {e}")
+        state.list_of_json_object = "[]"
+        return state
 
     def flatten(obj):
         """Recursively extract all text from JSON object (flatten nested dicts/lists)."""
@@ -108,16 +114,50 @@ def full_text_search(state: STATE):
         # Normalize whitespace
         return ' '.join(text.split()).lower()
 
+    def calculate_relevance_score(text, keywords):
+        """Calculate relevance score based on keyword frequency and position."""
+        text_lower = text.lower()
+        score = 0
+        
+        for keyword in keywords:
+            # Count keyword occurrences
+            count = text_lower.count(keyword.lower())
+            score += count * 10  # Base score for each occurrence
+            
+            # Bonus for exact phrase matches
+            if keyword.lower() in text_lower:
+                score += 5
+                
+            # Bonus for keywords appearing in title or beginning
+            if text_lower.startswith(keyword.lower()):
+                score += 20
+                
+        return score
+
     # Normalize keywords for case-insensitive matching
     keywords = [kw.lower() for kw in keywords]
+    print(f"Normalized keywords: {keywords}")
 
-    results = []
-    for item in json_list:
+    # Score and collect matching items
+    scored_results = []
+    for i, item in enumerate(json_list):
         combined_text = flatten(item)
-        if all(kw in combined_text for kw in keywords):
-            results.append(item)
-
-    print(f"List ::: {results}")
+        
+        # Check if any keyword matches
+        if any(kw in combined_text for kw in keywords):
+            score = calculate_relevance_score(combined_text, keywords)
+            scored_results.append((score, item, i))
+    
+    # Sort by relevance score (highest first) and take top 50
+    scored_results.sort(key=lambda x: x[0], reverse=True)
+    top_results = scored_results[:50]
+    
+    # Extract just the items from the top results
+    results = [item for score, item, index in top_results]
+    
+    print(f"Found {len(scored_results)} total matches, returning top 50")
+    print(f"Top 5 scores: {[score for score, _, _ in top_results[:5]]}")
+    
     state.list_of_json_object = str(results)
     return state
 
@@ -127,19 +167,21 @@ def get_answer(state: STATE):
     user_query = state.user_query
 
     SYSTEM_PROMPT = """
-    You are an AI assistant designed to answer user queries using the provided JSON data.
+    You are an authoritative AI assistant that provides direct, confident answers based on the provided JSON data.
 
     Instructions:
-    - Use only the given JSON data to answer the query truthfully.
-    - Do not fabricate or assume any information not present in the data.
-    - Keep your response clear, concise, and to the point.
-    - Maintain a respectful and neutral tone at all times.
-    - Avoid hateful speech, personal opinions, or unnecessary commentary.
-    - If the answer cannot be found in the data, reply with: "No relevant information found in the provided data."
+    - Give direct, clear, and confident answers without unnecessary hedging or uncertainty.
+    - Use the JSON data to provide authoritative responses that users can trust.
+    - Be concise and to the point - avoid lengthy explanations unless specifically requested.
+    - Present information as factual and approved, not as tentative suggestions.
+    - If the data contains relevant information, present it confidently as the answer.
+    - Only say "No relevant information found" if the data truly contains nothing related to the query.
+    - Use professional, authoritative language that conveys expertise and reliability.
+    - Structure responses logically with clear points when multiple pieces of information are relevant.
 
     Input: <user query>
     Data: <JSON>
-    Answer: <accurate and respectful response based solely on JSON>
+    Answer: <direct, authoritative response based on JSON data>
     """
 
     prompt = ChatPromptTemplate.from_messages(
