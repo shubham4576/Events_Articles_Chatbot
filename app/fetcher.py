@@ -1,28 +1,24 @@
-from datetime import date
-import httpx
 import json
-from pathlib import Path
+from datetime import date
+
+import httpx
 
 
 async def fetch_and_save_data():
-    data_type="all"
-    json_file_path="data/data.json"
+    data_type = "all"
+    json_file_path = "data/data.json"
     url = "https://theedgeroom.com/wp-json/custom/v1/search-data"
 
     headers = {
         "Content-Type": "application/json",
         "Authorization": "Basic YWRtaW46bUdWcSBFeG9UIGZJdWsgRGF3ayB0VW5hwqBvWGg4",
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
     }
     start_date = "1900-01-01"
     end_date = str(date.today())
-    payload = {
-        "start_date": start_date,
-        "end_date": end_date,
-        "type": data_type
-    }
+    payload = {"start_date": start_date, "end_date": end_date, "type": data_type}
 
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=payload)
@@ -36,5 +32,5 @@ async def fetch_and_save_data():
         return {
             "status": "error",
             "code": response.status_code,
-            "message": response.text
+            "message": response.text,
         }
